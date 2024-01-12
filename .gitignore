@@ -1,0 +1,7 @@
+# Ignorar todo
+*
+
+# Excepto estos archivos
+!.gitignore
+!bot_api.py
+!README.md
