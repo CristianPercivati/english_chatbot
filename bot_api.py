@@ -130,7 +130,7 @@ def get_response():
         bot_msg = send_completion(user_msg)
         #enviamos la respuesta
         print(bot_msg)
-        return jsonify(bot_msg)
+        return jsonify({'bot_msg': bot_msg, 'user_msg': user_msg})
     except Exception as e:
         print(f'Error: {e}')
         return jsonify({'success': False, 'error': str(e)})
