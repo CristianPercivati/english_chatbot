@@ -13,6 +13,12 @@ from flask import Flask, request, jsonify, session, send_file
 from flask_cors import CORS, cross_origin
 import uuid
 from dotenv import load_dotenv 
+from transformers import pipeline
+from pronouncing import phones_for_word
+from panphon.distance import Distance
+from phonemes_mapping import arpa_to_ipa, vocales_comp
+
+#whisper = pipeline('automatic-speech-recognition', model = 'dg96/whisper-finetuning-phoneme-transcription-g2p-large-dataset-space-seperated-phonemes')
 
 load_dotenv()
 
@@ -111,7 +117,6 @@ def get_audio():
     except Exception as e:
         print(f'Error generado:{e}')
 
-
 #endpoint para obtener la respuesta en texto del bot
 @app.route('/get_response', methods=['POST'])
 def get_response():
@@ -135,6 +140,103 @@ def get_response():
         print(f'Error: {e}')
         return jsonify({'success': False, 'error': str(e)})
 
+def get_phonemes(text):
+    #phonemes = whisper('audio.wav')
+    text='HH IH L OW  , HH AW  HH AE L  Y UW'
+    phonemes = {'text': ''}
+    phonemes['text'] = text
+    result = ''.join(caracter for caracter in phonemes['text'] if caracter.isalpha() or caracter.isspace())
+    result = result.split('  ')
+    result = [word.strip() for word in result if word]
+    result = [word.split() for word in result]
+    return result
+
+def convert_arpa_to_ipa(text):
+    return arpa_to_ipa[text]
+
+def convert_arpa(text):
+    text = clean_text(text)
+    text_good = [phones_for_word(word) for word in text.split()]
+    text_good = [phonemes[0].split() for phonemes in text_good]
+    #text_good = ' '.join(str(el) for word in text_good for el in word)
+    return text_good
+
+def clean_text(text):
+    text = ''.join(caracter for caracter in text if caracter.isalpha() or caracter.isspace())
+    return text
+def calculate_score(right,user):
+    final_answers = []
+    rs = Distance()
+    #print(user)
+    for i,word, in enumerate(right):
+        print(word)
+        final_answers.append([])
+        print(final_answers)
+        for j,phoneme in enumerate(word):
+            if(j<len(user[i])):
+                final_answers[i].append([phoneme,user[i][j]])
+            else:
+                final_answers[i].append([phoneme,''])
+    final_answers=[[
+        [phoneme_pair[0][0],phoneme_pair[1], phoneme_pair[0][1],rs.feature_edit_distance(convert_arpa_to_ipa(phoneme_pair[0][0]),convert_arpa_to_ipa(phoneme_pair[1]))] 
+        for phoneme_pair in word] for word in final_answers]
+    
+    print(final_answers)
+#endpoint que asigna puntajes a la pronunciación
+@app.route('/get_scores', methods=['GET'])
+def get_scores(phon_vocals=vocales_comp):
+    text = request.args.get('msg')
+    pronounced = get_phonemes(text) #En realidad es del audio
+    arpabet = convert_arpa(text)
+    text = text.split()
+    vocals = ['a','e','i','o','u']
+    arpa_text = []
+    i = 0
+    for j, phonemes in enumerate(arpabet):
+        arpa_text.append([])
+        for k, phoneme in enumerate(arpabet[j]):
+            arpa_text[j].append([phoneme,''])
+            ultimo = False
+            if ultimo:
+                break
+            while True:
+                if ultimo:
+                    break
+                if k== len(arpabet[j])-1:
+                    ultimo = True
+                if phoneme in phon_vocals:
+                    if text[j][i] in vocals:
+                        #print(arpa_text)
+                        arpa_text[j][k][1] = arpa_text[j][k][1]+text[j][i]
+                        i=i+1                   
+                        if ultimo:
+                            arpa_text[j][k][1]  = arpa_text[j][k][1]+text[j][i:]
+                            i=0
+                            break
+                        continue
+                    elif text[j][i]=="w" and arpabet[k]!='W':
+                        arpa_text[j][k][1]  = arpa_text[j][k][1]+text[j][i]
+                        i=i+1
+                        if ultimo:
+                            arpa_text[j][k][1]  = arpa_text[j][k][1]+text[j][i:]
+                            i=0
+                            break
+                        break
+                    else:
+                        break
+                elif text[j][i] not in vocals:
+                    arpa_text[j][k][1]  = arpa_text[j][k][1]+text[j][i]
+                    i=i+1                       
+                    if ultimo:
+                        arpa_text[j][k][1]  = arpa_text[j][k][1]+text[j][i:]
+                        i=0                       
+                        break
+                    continue
+                else:
+                    break
+    compare = calculate_score(arpa_text,pronounced)
+    #print(arpa_text)
+    return arpa_text
 #iniciamos el servidor Flask
 if __name__ == '__main__':
     app.run(debug=True)

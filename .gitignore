@@ -4,4 +4,5 @@
 # Excepto estos archivos
 !.gitignore
 !bot_api.py
+!phonemes_mapping.py
 !README.md
